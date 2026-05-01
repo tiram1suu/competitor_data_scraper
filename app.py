@@ -2,56 +2,67 @@ import streamlit as st
 import pandas as pd
 import re
 import time
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin
 import requests
 from bs4 import BeautifulSoup
-from fake_useragent import UserAgent
 from datetime import datetime
 import io
-import plotly.express as px
 import plotly.graph_objects as go
+import random
 
 
 st.set_page_config(
-    page_title="Competitor Intelligence Pro",
-    page_icon="🕵️",
-    layout="wide",
-    initial_sidebar_state="expanded"
+    page_title="Мониторинг конкурентов",
+    page_icon="📊",
+    layout="wide"
 )
+
+
+USER_AGENTS = [
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36',
+]
 
 
 st.markdown("""
 <style>
     .main-header {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        padding: 2rem;
+        background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+        padding: 1.5rem;
         border-radius: 15px;
         color: white;
         text-align: center;
         margin-bottom: 2rem;
     }
-    .metric-card {
-        background: white;
+    .insight-box {
+        background: #f0fdf4;
+        border-left: 4px solid #22c55e;
         padding: 1rem;
         border-radius: 10px;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        text-align: center;
+        margin: 1rem 0;
     }
-    .status-success {
-        color: #10b981;
-        font-weight: bold;
+    .warning-box {
+        background: #fef2f2;
+        border-left: 4px solid #ef4444;
+        padding: 1rem;
+        border-radius: 10px;
+        margin: 1rem 0;
     }
-    .status-warning {
-        color: #f59e0b;
-        font-weight: bold;
-    }
-    .stButton > button {
+    .recommendation-box {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         color: white;
+        padding: 1.5rem;
+        border-radius: 15px;
+        margin: 1rem 0;
+    }
+    .stButton > button {
+        background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+        color: white;
         border: none;
-        padding: 0.5rem 2rem;
-        border-radius: 8px;
+        padding: 0.75rem 2rem;
+        border-radius: 10px;
         font-weight: bold;
+        font-size: 1rem;
     }
     .stButton > button:hover {
         transform: translateY(-2px);
@@ -61,27 +72,24 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 class CompetitorIntelligence:
-    """Профессиональный сборщик данных о конкурентах"""
+    """Сборщик данных о конкурентах"""
     
     def __init__(self):
-        self.ua = UserAgent()
         self.session = requests.Session()
         self.results = []
-        self.progress_bar = None
         
     def extract_emails(self, text):
-        """Извлечение email адресов"""
+        """Извлечение email"""
         pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
         emails = re.findall(pattern, text)
         return list(set(emails))[:5]
     
     def extract_phones(self, text):
-        """Извлечение телефонных номеров"""
+        """Извлечение телефонов"""
         patterns = [
             r'\+7\s?\(?\d{3}\)?\s?\d{3}[-\s]?\d{2}[-\s]?\d{2}',
             r'8\s?\(?\d{3}\)?\s?\d{3}[-\s]?\d{2}[-\s]?\d{2}',
-            r'7\s?\(?\d{3}\)?\s?\d{3}[-\s]?\d{2}[-\s]?\d{2}',
-            r'\+\d{1,3}\s?\d{2,4}[-\s]?\d{3}[-\s]?\d{4}'
+            r'7\s?\(?\d{3}\)?\s?\d{3}[-\s]?\d{2}[-\s]?\d{2}'
         ]
         phones = []
         for pattern in patterns:
@@ -89,12 +97,11 @@ class CompetitorIntelligence:
         return list(set(phones))[:5]
     
     def extract_prices(self, soup):
-        """Извлечение цен со страницы"""
+        """Извлечение цен"""
         prices = []
         price_selectors = [
-            '[class*="price"]', '[class*="Price"]', '[class*="cost"]',
-            '[itemprop="price"]', '.product-price', '.current-price',
-            '[data-price]', '.sale-price', '.special-price'
+            '[class*="price"]', '[class*="Price"]', '[itemprop="price"]',
+            '.product-price', '.current-price', '[data-price]'
         ]
         
         for selector in price_selectors:
@@ -109,36 +116,24 @@ class CompetitorIntelligence:
                             prices.append(clean)
                     except:
                         pass
-        
-        text = soup.get_text()
-        numbers = re.findall(r'(\d+[\d\s]*[\.,]?\d*)\s?(?:руб|₽|RUB|USD|\$|€)', text)
-        for num in numbers[:10]:
-            try:
-                clean = float(re.sub(r'[^\d.]', '', num.replace(',', '.')))
-                if 10 < clean < 1000000:
-                    prices.append(clean)
-            except:
-                pass
-        
         return sorted(set(prices))[:10]
     
     def scrape_website(self, url, company_name):
         """Сбор данных с одного сайта"""
         try:
-            headers = {'User-Agent': self.ua.random}
+            headers = {'User-Agent': random.choice(USER_AGENTS)}
             response = self.session.get(url, headers=headers, timeout=15)
             response.raise_for_status()
             
             soup = BeautifulSoup(response.text, 'html.parser')
             text = soup.get_text()
             
-            # Сбор данных
             emails = self.extract_emails(text)
             phones = self.extract_phones(text)
             prices = self.extract_prices(soup)
             
             # Поиск на странице контактов
-            for page in ['/contacts', '/contact', '/about', '/company']:
+            for page in ['/contacts', '/contact']:
                 try:
                     contact_url = urljoin(url, page)
                     contact_response = self.session.get(contact_url, headers=headers, timeout=10)
@@ -159,203 +154,180 @@ class CompetitorIntelligence:
                 'avg_price': round(sum(prices)/len(prices), 2) if prices else None,
                 'max_price': max(prices) if prices else None,
                 'prices_count': len(prices),
-                'prices_list': ', '.join([f'{p:.2f}₽' for p in prices[:5]]) if prices else 'Не найдены',
-                'status': 'Success'
+                'prices_list': ', '.join([f'{p:.0f}₽' for p in prices[:5]]) if prices else 'Не найдены',
+                'status': '✅ Успешно'
+            }
+        except requests.exceptions.ConnectionError:
+            return {
+                'company_name': company_name,
+                'website': url,
+                'emails': '⚠️ Сайт недоступен',
+                'phones': '⚠️ Сайт недоступен',
+                'min_price': None,
+                'avg_price': None,
+                'max_price': None,
+                'prices_count': 0,
+                'prices_list': 'Сайт не загрузился',
+                'status': '⚠️ Сайт защищён / требуется обход'
+            }
+        except requests.exceptions.Timeout:
+            return {
+                'company_name': company_name,
+                'website': url,
+                'emails': '⚠️ Таймаут',
+                'phones': '⚠️ Таймаут',
+                'min_price': None,
+                'avg_price': None,
+                'max_price': None,
+                'prices_count': 0,
+                'prices_list': 'Сайт долго отвечает',
+                'status': '⚠️ Сайт не отвечает (таймаут)'
             }
         except Exception as e:
             return {
                 'company_name': company_name,
                 'website': url,
-                'emails': 'Ошибка',
-                'phones': 'Ошибка',
+                'emails': '⚠️ Ошибка',
+                'phones': '⚠️ Ошибка',
                 'min_price': None,
                 'avg_price': None,
                 'max_price': None,
                 'prices_count': 0,
-                'prices_list': 'Ошибка загрузки',
-                'status': f'Error: {str(e)[:50]}'
+                'prices_list': 'Не удалось собрать данные',
+                'status': f'⚠️ Ошибка: сайт может блокировать запросы'
             }
 
 def main():
     # Хедер
     st.markdown("""
     <div class="main-header">
-        <h1>🕵️ Competitor Intelligence Pro</h1>
-        <p>Профессиональный мониторинг конкурентов | Сбор цен и контактов</p>
+        <h1>📊 Мониторинг конкурентов</h1>
+        <p>Анализ цен и контактов за 5 минут</p>
     </div>
     """, unsafe_allow_html=True)
     
-    # Sidebar - настройки
-    with st.sidebar:
-        st.markdown("### ⚙️ Настройки")
-        st.markdown("---")
-        
-        api_key = st.text_input("🔑 API Key (Enterprise)", type="password", placeholder="Введите ключ")
-        
-        st.markdown("### 🎯 Параметры сбора")
-        delay = st.slider("Задержка между запросами (сек)", 1, 10, 2)
-        timeout = st.slider("Таймаут запроса (сек)", 10, 30, 15)
-        
-        st.markdown("### 📊 Опции экспорта")
-        export_format = st.selectbox("Формат отчета", ["Excel (.xlsx)", "CSV", "Both"])
-        
-        st.markdown("---")
-        st.markdown("### 💡 Советы")
-        st.info("""
-        - Добавьте полные URL сайтов (с https://)
-        - Используйте задержку 2-3 сек для стабильности
-        - Для динамических сайтов может потребоваться Selenium
-        """)
-    
-    # Основной контент
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        st.metric("📊 Всего конкурентов", "Подключено неограниченно", delta="Enterprise")
-    with col2:
-        st.metric("⚡ Скорость сбора", "~15 сек/сайт", delta="Оптимально")
-    with col3:
-        st.metric("📈 Точность данных", "95%", delta="AI enhanced")
-    
-    st.markdown("---")
-    
-    # Ввод данных
-    st.markdown("### 📝 Добавьте конкурентов для анализа")
-    
-    # Таблица для ввода конкурентов
-    if 'competitors_df' not in st.session_state:
-        st.session_state.competitors_df = pd.DataFrame([
-            {"Название компании": "", "URL сайта": "https://"}
-        ])
-    
-    # Редактируемая таблица
-    edited_df = st.data_editor(
-        st.session_state.competitors_df,
-        num_rows="dynamic",
-        column_config={
-            "Название компании": st.column_config.TextColumn("Название", required=True),
-            "URL сайта": st.column_config.TextColumn("URL", required=True)
-        },
-        use_container_width=True
+    # Режимы работы
+    mode = st.radio(
+        "Выберите режим:",
+        ["⚡ Быстрый анализ (1 клик)", "🔧 Расширенные настройки"],
+        horizontal=True
     )
     
-    # Кнопки действий
-    col1, col2, col3, col4 = st.columns([1, 1, 1, 2])
-    
-    with col1:
-        if st.button("➕ Добавить строку", use_container_width=True):
-            new_row = pd.DataFrame({"Название компании": "", "URL сайта": "https://"}, index=[0])
-            st.session_state.competitors_df = pd.concat([st.session_state.competitors_df, new_row], ignore_index=True)
-            st.rerun()
-    
-    with col2:
-        if st.button("🗑️ Очистить все", use_container_width=True):
-            st.session_state.competitors_df = pd.DataFrame({"Название компании": ["Пример"], "URL сайта": ["https://example.com"]})
-            st.rerun()
-    
-    with col3:
-        st.download_button(
-            label="📥 Скачать шаблон",
-            data="Название компании,URL сайта\nКонкурент 1,https://example1.com\nКонкурент 2,https://example2.com",
-            file_name="template_competitors.csv",
-            mime="text/csv",
+    if mode == "⚡ Быстрый анализ (1 клик)":
+        st.markdown("""
+        <div class="insight-box">
+            📌 <strong>Как работает:</strong> Добавьте 3-5 сайтов конкурентов → нажмите кнопку → получите анализ цен и рекомендации
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Простая таблица для ввода
+        st.markdown("### 📝 Добавьте конкурентов")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            comp1 = st.text_input("Конкурент 1", placeholder="Название", key="c1_name")
+            url1 = st.text_input("URL 1", placeholder="https://example.com", key="c1_url")
+        with col2:
+            comp2 = st.text_input("Конкурент 2", placeholder="Название", key="c2_name")
+            url2 = st.text_input("URL 2", placeholder="https://example.com", key="c2_url")
+        
+        comp3 = st.text_input("Конкурент 3", placeholder="Название", key="c3_name")
+        url3 = st.text_input("URL 3", placeholder="https://example.com", key="c3_url")
+        
+        # Быстрые примеры
+        with st.expander("📋 Примеры для теста"):
+            st.code("""
+Читай-город, https://www.chitai-gorod.ru
+Буквоед, https://www.bookvoed.ru
+Лабиринт, https://www.labirint.ru
+            """)
+            if st.button("📎 Вставить пример"):
+                st.session_state.c1_name = "Читай-город"
+                st.session_state.c1_url = "https://www.chitai-gorod.ru"
+                st.session_state.c2_name = "Буквоед"
+                st.session_state.c2_url = "https://www.bookvoed.ru"
+                st.rerun()
+        
+    else:
+        # Расширенные настройки
+        st.markdown("### 📝 Список конкурентов")
+        
+        if 'competitors_df' not in st.session_state:
+            st.session_state.competitors_df = pd.DataFrame([
+                {"Название": "", "URL": ""}
+            ])
+        
+        edited_df = st.data_editor(
+            st.session_state.competitors_df,
+            num_rows="dynamic",
+            column_config={
+                "Название": "Название компании",
+                "URL": "URL сайта"
+            },
             use_container_width=True
         )
+        
+        delay = st.slider("Задержка между запросами (сек)", 1, 5, 2)
     
     st.markdown("---")
-    
-    # Загрузка через файл
-    with st.expander("📁 Или загрузите список из файла"):
-        uploaded_file = st.file_uploader("Загрузите CSV или Excel", type=['csv', 'xlsx'])
-        if uploaded_file:
-            try:
-                if uploaded_file.name.endswith('csv'):
-                    df = pd.read_csv(uploaded_file)
-                else:
-                    df = pd.read_excel(uploaded_file)
-                if 'URL сайта' in df.columns:
-                    st.session_state.competitors_df = df[['Название компании', 'URL сайта']].copy()
-                    st.success(f"Загружено {len(df)} конкурентов!")
-                    st.rerun()
-            except Exception as e:
-                st.error(f"Ошибка загрузки: {e}")
     
     # Кнопка запуска
-    st.markdown("---")
-    
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        start_button = st.button("🚀 НАЧАТЬ СБОР ДАННЫХ", use_container_width=True)
+        start = st.button("🚀 НАЧАТЬ АНАЛИЗ", use_container_width=True)
     
-    # Процесс сбора
-    if start_button:
-        # Валидация
-        competitors = edited_df[edited_df['Название компании'].str.strip() != '']
-        competitors = competitors[competitors['URL сайта'].str.strip() != '']
+    if start:
+        # Сбор данных
+        if mode == "⚡ Быстрый анализ (1 клик)":
+            competitors = []
+            for i in range(1, 4):
+                name = st.session_state.get(f'c{i}_name', '')
+                url = st.session_state.get(f'c{i}_url', '')
+                if name and url:
+                    competitors.append({"name": name, "url": url})
+        else:
+            competitors = []
+            for _, row in edited_df.iterrows():
+                if row['Название'] and row['URL']:
+                    competitors.append({"name": row['Название'], "url": row['URL']})
         
         if len(competitors) == 0:
-            st.error("❌ Добавьте хотя бы одного конкурента для анализа")
+            st.error("❌ Добавьте хотя бы одного конкурента")
             st.stop()
         
-        # Прогресс
-        st.markdown("### 🔄 Выполняется сбор данных...")
+        st.markdown("### 🔄 Сбор данных...")
         progress_bar = st.progress(0)
         status_text = st.empty()
         
         scraper = CompetitorIntelligence()
         results = []
         
-        for idx, row in competitors.iterrows():
-            status_text.text(f"📡 Анализ: {row['Название компании']} ({row['URL сайта']})")
-            result = scraper.scrape_website(row['URL сайта'], row['Название компании'])
+        for idx, comp in enumerate(competitors):
+            status_text.text(f"📡 Анализируется: {comp['name']}")
+            result = scraper.scrape_website(comp['url'], comp['name'])
             results.append(result)
             progress_bar.progress((idx + 1) / len(competitors))
-            time.sleep(delay)
+            if mode != "⚡ Быстрый анализ (1 клик)":
+                time.sleep(delay)
         
-        status_text.text("✅ Сбор данных завершен!")
+        status_text.text("✅ Анализ завершен!")
         
-        # Сохранение в сессию
-        st.session_state.results = pd.DataFrame(results)
+        df_results = pd.DataFrame(results)
+        st.session_state.results = df_results
         
-        # Показ результатов
+        # ТАБЛИЦА РЕЗУЛЬТАТОВ
         st.markdown("---")
         st.markdown("### 📊 Результаты анализа")
         
-        # Метрики
-        df_results = pd.DataFrame(results)
-        col1, col2, col3, col4 = st.columns(4)
-        
-        with col1:
-            avg_price = df_results['avg_price'].dropna().mean()
-            st.metric("💰 Средняя цена конкурентов", f"{avg_price:.0f} ₽" if pd.notna(avg_price) else "Н/Д")
-        with col2:
-            success_count = df_results[df_results['status'] == 'Success'].shape[0]
-            st.metric("✅ Успешно собрано", f"{success_count}/{len(results)}")
-        with col3:
-            total_emails = df_results['emails'].apply(lambda x: len(x.split(',')) if x != 'Не найдены' else 0).sum()
-            st.metric("📧 Найдено email", total_emails)
-        with col4:
-            total_phones = df_results['phones'].apply(lambda x: len(x.split(',')) if x != 'Не найдены' else 0).sum()
-            st.metric("📞 Найдено телефонов", total_phones)
-        
-        # Таблица с результатами
-        st.markdown("### 📋 Детальная информация")
-        
         display_df = df_results[[
-            'company_name', 'website', 'emails', 'phones', 
+            'company_name', 'website', 'emails', 'phones',
             'min_price', 'avg_price', 'max_price', 'prices_list', 'status'
         ]].copy()
+        display_df.columns = ['Компания', 'Сайт', 'Email', 'Телефоны', 'Мин. цена', 'Ср. цена', 'Макс. цена', 'Цены', 'Статус']
         
-        display_df.columns = [
-            'Компания', 'Сайт', 'Email', 'Телефоны',
-            'Мин. цена', 'Ср. цена', 'Макс. цена', 'Найденные цены', 'Статус'
-        ]
+        st.dataframe(display_df, use_container_width=True)
         
-        st.dataframe(display_df, use_container_width=True, height=400)
-        
-        # График цен
-        st.markdown("### 📈 Сравнение цен конкурентов")
-        
+        # ГРАФИК ЦЕН
         price_data = df_results[df_results['avg_price'].notna()].copy()
         if len(price_data) > 0:
             fig = go.Figure()
@@ -364,11 +336,11 @@ def main():
                 y=price_data['avg_price'],
                 text=price_data['avg_price'].round(0),
                 textposition='auto',
-                marker_color='#667eea',
+                marker_color='#2a5298',
                 name='Средняя цена'
             ))
             fig.update_layout(
-                title="Средние цены по конкурентам",
+                title="Сравнение цен конкурентов",
                 xaxis_title="Конкуренты",
                 yaxis_title="Цена (₽)",
                 height=400,
@@ -376,73 +348,131 @@ def main():
             )
             st.plotly_chart(fig, use_container_width=True)
         
-        # Экспорт
-        st.markdown("### 📥 Экспорт данных")
+        # ВЫВОД ПО КОНКУРЕНТАМ 
+        st.markdown("---")
+        st.markdown("## 🧠 Аналитический вывод")
         
-        col1, col2, col3 = st.columns(3)
+        # Проверяем, есть ли данные по ценам
+        price_data_valid = df_results[df_results['avg_price'].notna()]
         
-        # Excel
+        if len(price_data_valid) > 0:
+            avg_price = price_data_valid['avg_price'].mean()
+            min_company = price_data_valid.loc[price_data_valid['avg_price'].idxmin(), 'company_name']
+            max_company = price_data_valid.loc[price_data_valid['avg_price'].idxmax(), 'company_name']
+            min_price = price_data_valid['avg_price'].min()
+            max_price = price_data_valid['avg_price'].max()
+            
+            st.markdown(f"""
+            <div class="recommendation-box">
+                <h3>📈 Что показал анализ</h3>
+                <ul style="font-size: 1.1rem;">
+                    <li>💰 <strong>Средняя цена на рынке:</strong> {avg_price:.0f} ₽</li>
+                    <li>📉 <strong>Самый дешёвый конкурент:</strong> {min_company} ({min_price:.0f} ₽)</li>
+                    <li>📈 <strong>Самый дорогой конкурент:</strong> {max_company} ({max_price:.0f} ₽)</li>
+                    <li>📊 <strong>Разброс цен:</strong> {min_price:.0f} – {max_price:.0f} ₽ (разница {max_price - min_price:.0f} ₽)</li>
+                </ul>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Рекомендации по цене
+            st.markdown("### 💡 Что делать бизнесу")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.markdown("""
+                <div class="insight-box">
+                    <strong>🎯 Рекомендуемая цена:</strong><br>
+                    <span style="font-size: 1.5rem; font-weight: bold;">{:.0f} – {:.0f} ₽</span><br>
+                    <small>👉 Оптимальный диапазон для конкурентоспособности</small>
+                </div>
+                """.format(avg_price * 0.9, avg_price * 1.1), unsafe_allow_html=True)
+            
+            with col2:
+                if avg_price < 5000:
+                    st.markdown("""
+                    <div class="insight-box">
+                        <strong>📌 Позиционирование:</strong><br>
+                        Масс-маркет сегмент<br>
+                        <small>👉 Ключевые факторы: доступность, широкий ассортимент</small>
+                    </div>
+                    """, unsafe_allow_html=True)
+                elif avg_price < 20000:
+                    st.markdown("""
+                    <div class="insight-box">
+                        <strong>📌 Позиционирование:</strong><br>
+                        Средний ценовой сегмент<br>
+                        <small>👉 Ключевые факторы: соотношение цена/качество</small>
+                    </div>
+                    """, unsafe_allow_html=True)
+                else:
+                    st.markdown("""
+                    <div class="insight-box">
+                        <strong>📌 Позиционирование:</strong><br>
+                        Премиум сегмент<br>
+                        <small>👉 Ключевые факторы: качество, сервис, бренд</small>
+                    </div>
+                    """, unsafe_allow_html=True)
+            
+            # Стратегия
+            st.markdown("""
+            <div class="recommendation-box">
+                <strong>🚀 Стратегическая рекомендация:</strong><br>
+                • Если вы новичок — стартуйте на 5-10% ниже средней цены<br>
+                • Если у вас уникальное преимущество — цена может быть на 10-15% выше рынка<br>
+                • Регулярно обновляйте анализ (раз в 1-2 месяца)
+            </div>
+            """, unsafe_allow_html=True)
+            
+        else:
+            st.markdown("""
+            <div class="warning-box">
+                <strong>⚠️ Недостаточно данных для анализа цен</strong><br>
+                Попробуйте добавить сайты интернет-магазинов с явными ценами на товары.
+            </div>
+            """, unsafe_allow_html=True)
+        
+        # Контактная информация
+        st.markdown("---")
+        st.markdown("### 📞 Найденные контакты конкурентов")
+        
+        contacts_df = df_results[df_results['emails'] != 'Не найдены'][['company_name', 'emails', 'phones']].copy()
+        if len(contacts_df) > 0:
+            st.dataframe(contacts_df, use_container_width=True)
+        else:
+            st.info("Контакты не найдены. Многие сайты защищают контактную информацию от роботов.")
+        
+        # ЭКСПОРТ
+        st.markdown("---")
+        st.markdown("### 📥 Экспорт отчета")
+        
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
             df_results.to_excel(writer, sheet_name='Конкуренты', index=False)
             
-            # Сводный лист
-            summary = pd.DataFrame([{
-                'Дата экспорта': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                'Всего конкурентов': len(results),
-                'Успешно собрано': success_count,
-                'Средняя цена': avg_price if pd.notna(avg_price) else 'Н/Д',
-                'Всего email': total_emails,
-                'Всего телефонов': total_phones
-            }])
-            summary.to_excel(writer, sheet_name='Сводка', index=False)
+            # Добавляем лист с аналитикой
+            if len(price_data_valid) > 0:
+                analytics = pd.DataFrame([{
+                    'Дата': datetime.now().strftime('%Y-%m-%d %H:%M'),
+                    'Средняя цена рынка': avg_price,
+                    'Минимальная цена': min_price,
+                    'Максимальная цена': max_price,
+                    'Самый дешёвый': min_company,
+                    'Самый дорогой': max_company,
+                    'Рекомендуемая цена (мин)': avg_price * 0.9,
+                    'Рекомендуемая цена (макс)': avg_price * 1.1
+                }])
+                analytics.to_excel(writer, sheet_name='Аналитика', index=False)
         
-        with col1:
-            st.download_button(
-                label="📊 Скачать Excel отчет",
-                data=output.getvalue(),
-                file_name=f"competitor_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True
-            )
+        st.download_button(
+            label="📊 Скачать Excel-отчет",
+            data=output.getvalue(),
+            file_name=f"competitor_analysis_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True
+        )
         
-        # CSV
-        with col2:
-            csv = df_results.to_csv(index=False).encode('utf-8-sig')
-            st.download_button(
-                label="📄 Скачать CSV",
-                data=csv,
-                file_name=f"competitor_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                mime="text/csv",
-                use_container_width=True
-            )
-        
-        # JSON для API
-        with col3:
-            st.download_button(
-                label="🔗 JSON (API ready)",
-                data=df_results.to_json(orient='records', force_ascii=False, indent=2),
-                file_name=f"competitor_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
-                mime="application/json",
-                use_container_width=True
-            )
-        
-        # SEO рекомендации
-        st.markdown("---")
-        st.markdown("### 💡 AI-рекомендации")
-        
-        with st.expander("📈 Анализ рынка", expanded=True):
-            if avg_price:
-                st.write(f"**Анализ позиционирования:** Средняя цена на рынке составляет **{avg_price:.0f} ₽**")
-                
-                if avg_price > 5000:
-                    st.info("💎 Ваша ниша относится к премиум-сегменту. Рекомендуется делать акцент на качестве и сервисе.")
-                elif avg_price > 1000:
-                    st.info("📊 Средний ценовой сегмент. Ключевые факторы успеха: соотношение цена/качество.")
-                else:
-                    st.info("🎯 Масс-маркет сегмент. Важны: объем продаж, доступность, широта ассортимента.")
-        
-        st.success("✅ Отчет готов! Скачайте данные в любом удобном формате.")
+        st.success("✅ Отчет готов! Скачайте и используйте для ценообразования.")
 
 if __name__ == "__main__":
     main()
